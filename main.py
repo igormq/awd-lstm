@@ -138,7 +138,7 @@ class AWDLSTM(LightningModule):
                                          weight_decay=self.hparams.weight_decay)
 
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                         self.hparams.learning_rate_scheduler_milestones,
+                                                         self.hparams.multi_step_lr_milestones,
                                                          gamma=0.1)
         return [optimizer], [scheduler]
 
@@ -157,24 +157,10 @@ class AWDLSTM(LightningModule):
 
 if __name__ == "__main__":
 
-    import os
-    import hashlib
-    fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
-    if os.path.exists(fn):
-        print('Loading cached dataset...')
-        corpus = torch.load(fn)
-    else:
-        print('Producing dataset...')
-        corpus = data.Corpus(args.data)
-        torch.save(corpus, fn)
-
-    eval_batch_size = 10
-    test_batch_size = 1
-
     parser = ArgumentParser()
     parser.add_argument('data', type=str, default='data/penn/',
                     help='location of the data corpus')
-    parser.add_argument('--embedding_size', type=int, default=400,
+    parser.add_argument('--embedding-size', type=int, default=400,
                         help='size of word embeddings')
     parser.add_argument('--num-hidden', type=int, default=1150,
                         help='number of hidden units per layer')
@@ -190,13 +176,13 @@ if __name__ == "__main__":
                         help='batch size')
     parser.add_argument('--bptt', type=int, default=70,
                         help='sequence length')
-    parser.add_argument('-output-dropout', type=float, default=0.4,
+    parser.add_argument('--output-dropout', type=float, default=0.4,
                         help='dropout applied to layers (0 = no dropout)')
     parser.add_argument('--hidden-dropout', type=float, default=0.3,
                         help='dropout for rnn layers (0 = no dropout)')
     parser.add_argument('--input-dropout', type=float, default=0.65,
                         help='dropout for input embedding layers (0 = no dropout)')
-    parser.add_argument('--emdedding-dropout', type=float, default=0.1,
+    parser.add_argument('--embedding-dropout', type=float, default=0.1,
                         help='dropout to remove words from embedding layer (0 = no dropout)')
     parser.add_argument('--weight-dropout', type=float, default=0.5,
                         help='amount of weight dropout to apply to the RNN hidden to hidden matrix')
@@ -210,11 +196,25 @@ if __name__ == "__main__":
                         help='path of model to resume')
     parser.add_argument('--optimizer', type=str,  default='sgd',
                         help='optimizer to use (sgd, adam)')
-    parser.add_argument('--multi-step-lr-milestone', nargs="+", type=int, default=[1e10],
+    parser.add_argument('--multi-step-lr-milestones', nargs="+", type=int, default=[1e10],
                         help='When (which epochs) to divide the learning rate by 10')
+
 
     hparams = parser.parse_args()
 
+    import os
+    import hashlib
+    fn = 'corpus.{}.data'.format(hashlib.md5(hparams.data.encode()).hexdigest())
+    if os.path.exists(fn):
+        print('Loading cached dataset...')
+        corpus = torch.load(fn)
+    else:
+        print('Producing dataset...')
+        corpus = data.Corpus(hparams.data)
+        torch.save(corpus, fn)
+
+    eval_batch_size = 10
+    test_batch_size = 1
     hparams.num_tokens = len(corpus.dictionary)
     model = AWDLSTM(corpus, hparams)
 
