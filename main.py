@@ -30,16 +30,7 @@ class AWDLSTM(LightningModule):
         # init superclass
         super().__init__(**kwargs)
 
-        self.hparams.alpha = alpha
-        self.hparams.beta = beta
-        self.original_truncated_bptt_steps = truncated_bptt_steps
-        self.hparams.optimizer = 'sgd'
-        self.hparams.learning_rate = 0.1
-        self.hparams.weight_decay = 0
-        self.hparams.learning_rate_scheduler_milestones = []
-        self.batch_size = 80
-        self.bptt = 70
-
+        self.hparams = hparams
         self.model = WDLSTM(self.hparams.num_tokens,
                             num_layers=self.hparams.num_layers,
                             num_hidden=self.hparams.num_hidden,
@@ -51,6 +42,7 @@ class AWDLSTM(LightningModule):
                             output_dropout=self.hparams.output_dropout,
                             weight_dropout=self.hparams.weight_dropout)
         self.criterion = torch.nn.NLLLoss()
+        self.corpus = corpus
         self.hiddens = None
 
     def forward(self, x, hiddens=None):
@@ -97,6 +89,7 @@ class AWDLSTM(LightningModule):
         x, y = batch
 
         out, self.hiddens, (hs, dropped_hs) = self(x, self.hiddens)
+        self.hiddens = repackage_hidden(self.hiddens)
 
         loss = x.shape[1] * self.criterion(out, y)
         return {'loss': loss, 'seq_len': x.shape[1]}
@@ -152,7 +145,7 @@ class AWDLSTM(LightningModule):
 
     def val_dataloader(self):
         return DataLoader(
-            BPTTTensorDataset(self.corpus.val, self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
+            BPTTTensorDataset(self.corpus.valid, self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
 
 
 if __name__ == "__main__":
@@ -160,7 +153,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('data', type=str, default='data/penn/',
                     help='location of the data corpus')
-    parser.add_argument('--embedding-size', type=int, default=400,
+    parser.add_argument('--num-embedding', type=int, default=400,
                         help='size of word embeddings')
     parser.add_argument('--num-hidden', type=int, default=1150,
                         help='number of hidden units per layer')
@@ -196,6 +189,8 @@ if __name__ == "__main__":
                         help='path of model to resume')
     parser.add_argument('--optimizer', type=str,  default='sgd',
                         help='optimizer to use (sgd, adam)')
+    parser.add_argument('--no-tie-weights', dest='tie_weights',  default=True, action='store_false',
+                        help='if set, does not tie the input/output embedding weights')
     parser.add_argument('--multi-step-lr-milestones', nargs="+", type=int, default=[1e10],
                         help='When (which epochs) to divide the learning rate by 10')
 
@@ -218,5 +213,5 @@ if __name__ == "__main__":
     hparams.num_tokens = len(corpus.dictionary)
     model = AWDLSTM(corpus, hparams)
 
-    trainer = Trainer(gradient_clip_val=self.hparams.gradient_clip)
+    trainer = Trainer(gradient_clip_val=hparams.gradient_clip)
     trainer.fit(model)
