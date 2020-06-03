@@ -6,29 +6,55 @@ import torch.nn.functional as F
 from collections import OrderedDict as odict
 
 
-def _weight_drop(module, weights, dropout):
-    """
-    Helper for `WeightDrop`.
-    """
+class ForwardWithDrop(object):
+    def __init__(self, weights_names_ls, module, dropout_p,
+                 original_module_forward):
+        self.weights_names_ls = weights_names_ls
+        self.module = module
+        self.dropout_p = dropout_p
+        self.original_module_forward = original_module_forward
 
-    for name_w in weights:
-        w = getattr(module, name_w)
-        del module._parameters[name_w]
-        module.register_parameter(name_w + '_raw', torch.nn.Parameter(w))
+    def __call__(self, *args,
+                 **kwargs):  # the function formerly known as "forward_new"
+        for name_param in self.weights_names_ls:
+            param = self.module._parameters.get(name_param)
+            param_with_droput = Parameter(torch.nn.functional.dropout(
+                param, p=self.dropout_p, training=self.module.training),
+                                          requires_grad=param.requires_grad)
+            self.module._parameters.__setitem__(name_param, param_with_droput)
+
+        return self.original_module_forward(*args, **kwargs)
+
+def _weight_drop(module, weights_names_ls, dropout_p):
 
     original_module_forward = module.forward
+    forward_with_drop = ForwardWithDrop(weights_names_ls, module, dropout_p, original_module_forward)
+    setattr(module, 'forward', forward_with_drop)
+    return module
 
-    def forward(*args, **kwargs):
-        for name_w in weights:
-            raw_w = getattr(module, name_w + '_raw')
-            w = torch.nn.functional.dropout(raw_w,
-                                            p=dropout,
-                                            training=module.training)
-            module._parameters[name_w] = w.retain_grad()
+# def _weight_drop(module, weights, dropout):
+#     """
+#     Helper for `WeightDrop`.
+#     """
 
-        return original_module_forward(*args, **kwargs)
+#     for name_w in weights:
+#         w = getattr(module, name_w)
+#         del module._parameters[name_w]
+#         module.register_parameter(name_w + '_raw', torch.nn.Parameter(w))
 
-    setattr(module, 'forward', forward)
+#     original_module_forward = module.forward
+
+#     def forward(*args, **kwargs):
+#         for name_w in weights:
+#             raw_w = getattr(module, name_w + '_raw')
+#             w = torch.nn.functional.dropout(raw_w,
+#                                             p=dropout,
+#                                             training=module.training)
+#             module._parameters[name_w] = w.retain_grad()
+
+#         return original_module_forward(*args, **kwargs)
+
+#     setattr(module, 'forward', forward)
 
 
 class WeightDropLSTM(torch.nn.LSTM):
