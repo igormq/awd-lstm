@@ -20,11 +20,13 @@ import math
 
 from utils import BPTTTensorDataset, repackage_hidden
 
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple
+from torchtext.experimental.datasets import LanguageModelingDataset
+
 
 class AWDLSTM(LightningModule):
     def __init__(self,
-                 corpus: data.Corpus,
+                 datasets: Tuple[LanguageModelingDataset],
                  hparams: dict(),
                  **kwargs) -> 'LightningTemplateModel':
         # init superclass
@@ -42,7 +44,7 @@ class AWDLSTM(LightningModule):
                             output_dropout=self.hparams.output_dropout,
                             weight_dropout=self.hparams.weight_dropout)
         self.criterion = torch.nn.NLLLoss()
-        self.corpus = corpus
+        self.datasets = datasets
         self.hiddens = None
 
     def forward(self, x, hiddens=None):
@@ -53,7 +55,8 @@ class AWDLSTM(LightningModule):
         """ During training, we rescale the learning rate depending on the length of the resulting sequence compared to the original specified sequence length. The rescaling step is necessary as sampling arbitrary sequence lengths with a fixed learning rate favors short sequences over longer ones. This linear scaling rule has been noted as important for training large scale minibatch SGD without loss of accu- racy (Goyal et al., 2017) and is a component of unbiased truncated backpropagation through time (Tallec & Ollivier, 2017).
         """
         temp_lr = optimizer.param_groups[0]['lr']
-        optimizer.param_groups[0]['lr'] = temp_lr * self.seq_len / self.hparams.bptt
+        optimizer.param_groups[0]['lr'] = temp_lr * \
+            self.seq_len / self.hparams.bptt
         super().backward(trainer, loss, optimizer, optimizer_idx)
         optimizer.param_groups[0]['lr'] = temp_lr
 
@@ -77,9 +80,11 @@ class AWDLSTM(LightningModule):
             loss += self.hparams.alpha * dropped_hs[-1].pow(2).mean()
         # Temporal Activation Regularization (slowness)
         if self.hparams.beta:
-            loss += self.hparams.beta * (hs[-1][1:] - hs[-1][:-1]).pow(2).mean()
+            loss += self.hparams.beta * \
+                (hs[-1][1:] - hs[-1][:-1]).pow(2).mean()
 
-        logs = {'train_loss': loss, 'train_raw_loss': raw_loss, 'train_ppl': loss.exp(), 'train_bpc': loss / math.log(2) }
+        logs = {'train_loss': loss, 'train_raw_loss': raw_loss,
+                'train_ppl': loss.exp(), 'train_bpc': loss / math.log(2)}
         return {'loss': loss, 'log': logs, 'progress_bar': logs}
 
     def on_batch_end(self):
@@ -112,19 +117,21 @@ class AWDLSTM(LightningModule):
         self.hiddens = None
         return {'val_loss': loss, 'log': logs, 'progress_bar': logs}
 
-
     def configure_optimizers(self):
         """
         Return whatever optimizers and learning rate schedulers you want here.
         At least one optimizer is required.
 
 
-        WARNING: The paper use a variation of ASGD, called non-monotonically triggered ASGD (Algorithm 1), which is not implemented yet, They used L to be the number of iterations in an epoch (i.e., after training epoch ends) and n=5.
+        WARNING: The paper use a variation of ASGD, called non-monotonically 
+        triggered ASGD (Algorithm 1), which is not implemented yet, They used L 
+        to be the number of iterations in an epoch (i.e., after training epoch ends) 
+        and n=5.
         """
         if self.hparams.optimizer == 'sgd':
             optimizer = torch.optim.SGD(self.parameters(),
-                                    lr=self.hparams.learning_rate,
-                                    weight_decay=self.hparams.weight_decay)
+                                        lr=self.hparams.learning_rate,
+                                        weight_decay=self.hparams.weight_decay)
         if self.hparams.optimizer == 'adam':
             optimizer = torch.optim.Adam(self.parameters(),
                                          lr=self.hparams.learning_rate,
@@ -141,18 +148,18 @@ class AWDLSTM(LightningModule):
     def train_dataloader(self):
 
         return DataLoader(
-            BPTTTensorDataset(self.corpus.train, self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
+            BPTTTensorDataset(self.datasets['train'], self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
 
     def val_dataloader(self):
         return DataLoader(
-            BPTTTensorDataset(self.corpus.valid, self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
+            BPTTTensorDataset(self.datasets['valid'], self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
 
 
 if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument('data', type=str, default='data/penn/',
-                    help='location of the data corpus')
+                        help='location of the data corpus')
     parser.add_argument('--num-embedding', type=int, default=400,
                         help='size of word embeddings')
     parser.add_argument('--num-hidden', type=int, default=1150,
@@ -194,24 +201,23 @@ if __name__ == "__main__":
     parser.add_argument('--multi-step-lr-milestones', nargs="+", type=int, default=[1e10],
                         help='When (which epochs) to divide the learning rate by 10')
 
-
     hparams = parser.parse_args()
 
     import os
-    import hashlib
-    fn = 'corpus.{}.data'.format(hashlib.md5(hparams.data.encode()).hexdigest())
-    if os.path.exists(fn):
-        print('Loading cached dataset...')
-        corpus = torch.load(fn)
-    else:
-        print('Producing dataset...')
-        corpus = data.Corpus(hparams.data)
-        torch.save(corpus, fn)
+    from datasets import BRTD
+
+    if not os.path.exists(os.path.join(hparams.data, 'dataset.data')):
+        datasets, vocab = BRTD(hparams.data)
+        datasets = dict(zip(('train', 'valid', 'test'), datasets))
+        torch.save((datasets, vocab), os.path.join(hparams.data, 'dataset.data'))
+
+    datasets = torch.load(os.path.join(hparams.data, 'dataset.data'))
+    vocab = datasets['train'].get_vocab()
 
     eval_batch_size = 10
     test_batch_size = 1
-    hparams.num_tokens = len(corpus.dictionary)
-    model = AWDLSTM(corpus, hparams)
+    hparams.num_tokens = len(vocab)
+    model = AWDLSTM(datasets, hparams)
 
     trainer = Trainer(gradient_clip_val=hparams.gradient_clip)
     trainer.fit(model)

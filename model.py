@@ -18,43 +18,21 @@ class ForwardWithDrop(object):
                  **kwargs):  # the function formerly known as "forward_new"
         for name_param in self.weights_names_ls:
             param = self.module._parameters.get(name_param)
-            param_with_droput = Parameter(torch.nn.functional.dropout(
+            param_with_droput = nn.Parameter(torch.nn.functional.dropout(
                 param, p=self.dropout_p, training=self.module.training),
-                                          requires_grad=param.requires_grad)
+                requires_grad=param.requires_grad)
             self.module._parameters.__setitem__(name_param, param_with_droput)
 
         return self.original_module_forward(*args, **kwargs)
 
+
 def _weight_drop(module, weights_names_ls, dropout_p):
 
     original_module_forward = module.forward
-    forward_with_drop = ForwardWithDrop(weights_names_ls, module, dropout_p, original_module_forward)
+    forward_with_drop = ForwardWithDrop(
+        weights_names_ls, module, dropout_p, original_module_forward)
     setattr(module, 'forward', forward_with_drop)
     return module
-
-# def _weight_drop(module, weights, dropout):
-#     """
-#     Helper for `WeightDrop`.
-#     """
-
-#     for name_w in weights:
-#         w = getattr(module, name_w)
-#         del module._parameters[name_w]
-#         module.register_parameter(name_w + '_raw', torch.nn.Parameter(w))
-
-#     original_module_forward = module.forward
-
-#     def forward(*args, **kwargs):
-#         for name_w in weights:
-#             raw_w = getattr(module, name_w + '_raw')
-#             w = torch.nn.functional.dropout(raw_w,
-#                                             p=dropout,
-#                                             training=module.training)
-#             module._parameters[name_w] = w.retain_grad()
-
-#         return original_module_forward(*args, **kwargs)
-
-#     setattr(module, 'forward', forward)
 
 
 class WeightDropLSTM(torch.nn.LSTM):
@@ -64,6 +42,7 @@ class WeightDropLSTM(torch.nn.LSTM):
     Args:
         weight_dropout (float): The probability a weight will be dropped.
     """
+
     def __init__(self, *args, weight_dropout=0.0, **kwargs):
         super().__init__(*args, **kwargs)
         weights = ['weight_hh_l' + str(i) for i in range(self.num_layers)]
@@ -80,6 +59,7 @@ class LockedDropout(nn.Module):
             batch_first (bool): If ``True``, then the input and output tensors are provided as (batch, seq, feature). Default: ``True``
 
     """
+
     def __init__(self, p=0.5, batch_first=True):
         super().__init__()
 
@@ -97,9 +77,11 @@ class LockedDropout(nn.Module):
 
         x = x.clone()
         if self.batch_first:
-            mask = x.new_empty(x.size(0), 1, x.size(2), requires_grad=False).bernoulli_(1 - self.p)
+            mask = x.new_empty(x.size(0), 1, x.size(
+                2), requires_grad=False).bernoulli_(1 - self.p)
         else:
-            mask = x.new_empty(1, x.size(1), x.size(2), requires_grad=False).bernoulli_(1 - self.p)
+            mask = x.new_empty(1, x.size(1), x.size(
+                2), requires_grad=False).bernoulli_(1 - self.p)
         mask = mask / (1 - self.p)
         mask = mask.expand_as(x)
         return mask * x
@@ -109,15 +91,15 @@ class LockedDropout(nn.Module):
 
 
 class EmbeddedDropout(nn.Embedding):
-    def __init__(self, num_embeddings, embedding_dim, dropout=None, scale=None, padding_idx=None, max_norm=None, norm_type=2., scale_grad_by_freq=False,sparse=False, _weight=None):
+    def __init__(self, num_embeddings, embedding_dim, dropout=None, scale=None, padding_idx=None, max_norm=None, norm_type=2., scale_grad_by_freq=False, sparse=False, _weight=None):
         if padding_idx is None:
             padding_idx = -1
 
-        super().__init__(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=max_norm, norm_type=norm_type, scale_grad_by_freq=scale_grad_by_freq, sparse=sparse, _weight=_weight)
+        super().__init__(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=max_norm,
+                         norm_type=norm_type, scale_grad_by_freq=scale_grad_by_freq, sparse=sparse, _weight=_weight)
 
         self.dropout = dropout
         self.scale = scale
-
 
     def forward(self, input):
         if self.dropout and not self.training:
@@ -146,7 +128,7 @@ class EmbeddedDropout(nn.Embedding):
         return s.format(**self.__dict__)
 
     @classmethod
-    def from_pretrained(cls, embeddings, freeze=True, dropout=None, scale=None, padding_idx=None, max_norm=None, norm_type=2., scale_grad_by_freq=False,sparse=False):
+    def from_pretrained(cls, embeddings, freeze=True, dropout=None, scale=None, padding_idx=None, max_norm=None, norm_type=2., scale_grad_by_freq=False, sparse=False):
         r"""Creates Embedding instance from given 2-dimensional FloatTensor.
 
         Args:
@@ -188,6 +170,7 @@ class EmbeddedDropout(nn.Embedding):
             sparse=sparse)
         embedding.weight.requires_grad = not freeze
         return embedding
+
 
 class WDLSTM(nn.Module):
     """ Weight-Droppped LSTM
@@ -236,21 +219,19 @@ class WDLSTM(nn.Module):
         self.input_locked_dropout = LockedDropout(input_dropout,
                                                   batch_first=batch_first)
 
-
-
         self.rnns = torch.nn.ModuleList(
             [
                 torch.nn.ModuleDict([
                     ['rnn', WeightDropLSTM(num_embedding if l == 0 else num_hidden,
-                           num_hidden if l != num_layers - 1 else
-                           (num_embedding if tie_weights else num_hidden),
-                           num_layers=1,
-                           weight_dropout=weight_dropout,
-                           batch_first=batch_first)],
+                                           num_hidden if l != num_layers - 1 else
+                                           (num_embedding if tie_weights else num_hidden),
+                                           num_layers=1,
+                                           weight_dropout=weight_dropout,
+                                           batch_first=batch_first)],
                     ['locked_dropout', LockedDropout(hidden_dropout,
-                                                   batch_first=batch_first) if l != num_layers - 1 else None]
+                                                     batch_first=batch_first) if l != num_layers - 1 else None]
                 ])
-            for l in range(num_layers)]
+                for l in range(num_layers)]
         )
 
         self.output_locked_dropout = LockedDropout(output_dropout,
@@ -267,7 +248,6 @@ class WDLSTM(nn.Module):
         # https://arxiv.org/abs/1611.01462
         if tie_weights:
             self.decoder.weight = self.encoder.weight
-
 
         self.init_weights()
 
