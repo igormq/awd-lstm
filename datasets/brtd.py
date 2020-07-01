@@ -1,6 +1,7 @@
 import os
 import re
 from collections import Counter
+import bisect
 
 from tqdm import tqdm
 import torch
@@ -45,6 +46,18 @@ _patterns_dict = list((re.compile(p), r)
                       for p, r in zip(_patterns, _replacements))
 
 
+def _build_vocab(data, transforms, min_freq=1, max_size=None):
+    tok_list = map(lambda x: transforms(x), data)
+
+    counter = Counter()
+    with tqdm(unit_scale=0, unit='lines') as t:
+        for tokens in tok_list:
+            counter.update(tokens)
+            t.update(1)
+    vocab = Vocab(counter, min_freq=3)
+    return vocab
+
+
 def _basic_pt_word_normalize(line):
     r"""
     Basic normalization for a line of text.
@@ -71,58 +84,31 @@ def _basic_pt_word_normalize(line):
     return line.split()
 
 
-def _build_vocab(data, transforms, min_freq=1, max_size=None):
-    tok_list = map(lambda x: transforms(x), data)
-
-    counter = Counter()
-    with tqdm(unit_scale=0, unit='lines') as t:
-        for tokens in tok_list:
-            counter.update(tokens)
-            t.update(1)
-    vocab = Vocab(counter, min_freq=3)
-    return vocab
-
-
 def _basic_pt_char_normalize(line):
     line = line.lower()
     for pattern_re, replaced_str in _patterns_dict:
         line = pattern_re.sub(replaced_str, line)
     return list(line)
 
+class BRTD:
 
-def _setup_dataset(root_path, tokenizer=None, vocab=None,
-                   data_select=('train', 'test', 'valid')):
-    if tokenizer is None:
-        tokenizer = _basic_pt_word_normalize
+    @staticmethod
+    def create(root, vocab=None, tokenizer=_basic_pt_word_normalize):
+        vocab = vocab
+        transforms = None
 
-    if isinstance(data_select, str):
-        data_select = [data_select]
-    if not set(data_select).issubset(set(('train', 'valid', 'test'))):
-        raise TypeError(
-            'Given data selection {} is not supported!'.format(data_select))
+        datasets = {}
+        for subset in ['train', 'valid', 'test']:
+            with open(os.path.join(root, f"{subset}.txt")) as f:
+                data = [l.strip() for l in f.readlines()]
 
-    with open(os.path.join(root_path, 'train.txt')) as f_train, open(os.path.join(root_path, 'valid.txt')) as f_valid, open(os.path.join(root_path, 'test.txt')) as f_test:
-        train, test, valid = f_train.readlines(), f_test.readlines(), f_valid.readlines()
-        raw_data = {'train': [txt for txt in train],
-                    'valid': [txt for txt in valid],
-                    'test': [txt for txt in test]}
+            if vocab is None and subset == 'train':
+                vocab = _build_vocab(data, tokenizer)
+                transforms = Sequential(ToNumber(vocab), ToTensor(torch.long))
 
-    if vocab is None:
-        if 'train' not in data_select:
-            raise TypeError("Must pass a vocab if train is not selected.")
+            data = ' '.join(data)
+            data = tokenizer(data)
 
-        vocab = _build_vocab(raw_data['train'], tokenizer)
+            datasets[subset] = transforms(data)
 
-    transforms = Sequential(tokenizer, ToNumber(vocab), ToTensor(torch.long))
-    data = {k: torch.cat(tuple(transforms(row) for row in data), axis=0)
-            for k, data in raw_data.items()}
-    return tuple(data[item] for item in data_select), vocab
-
-
-def BRTD(root_path, level='word', **kwargs):
-
-    if level == 'word':
-        return _setup_dataset(root_path, **kwargs)
-    elif level == 'char':
-        kwargs.setdefault('tokenizer', _basic_pt_char_normalize)
-        return _setup_dataset(root_path, **kwargs)
+        return datasets, vocab

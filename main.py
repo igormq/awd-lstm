@@ -18,7 +18,8 @@ from model import WDLSTM
 import data
 import math
 
-from utils import BPTTTensorDataset, repackage_hidden
+from utils import repackage_hidden
+from datasets.bptt import BPTTTensorDataset
 
 from typing import Optional, Callable, Tuple
 from torchtext.experimental.datasets import LanguageModelingDataset
@@ -206,13 +207,7 @@ if __name__ == "__main__":
     import os
     from datasets import BRTD
 
-    if not os.path.exists(os.path.join(hparams.data, 'dataset.data')):
-        datasets, vocab = BRTD(hparams.data)
-        datasets = dict(zip(('train', 'valid', 'test'), datasets))
-        torch.save((datasets, vocab), os.path.join(hparams.data, 'dataset.data'))
-
-    datasets = torch.load(os.path.join(hparams.data, 'dataset.data'))
-    vocab = datasets['train'].get_vocab()
+    datasets, vocab = BRTD.create('data/brtd-short')
 
     eval_batch_size = 10
     test_batch_size = 1
