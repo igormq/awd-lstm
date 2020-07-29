@@ -3,41 +3,35 @@ import torch.nn as nn
 
 import torch.nn.functional as F
 
-from collections import OrderedDict as odict
 
+def _weight_drop(module, weights, dropout):
+    """
+    Helper for `WeightDrop`.
+    """
 
-class ForwardWithDrop(object):
-    def __init__(self, weights_names_ls, module, dropout_p,
-                 original_module_forward):
-        self.weights_names_ls = weights_names_ls
-        self.module = module
-        self.dropout_p = dropout_p
-        self.original_module_forward = original_module_forward
-
-    def __call__(self, *args,
-                 **kwargs):  # the function formerly known as "forward_new"
-        for name_param in self.weights_names_ls:
-            param = self.module._parameters.get(name_param)
-            param_with_droput = nn.Parameter(torch.nn.functional.dropout(
-                param, p=self.dropout_p, training=self.module.training),
-                requires_grad=param.requires_grad)
-            self.module._parameters.__setitem__(name_param, param_with_droput)
-
-        return self.original_module_forward(*args, **kwargs)
-
-
-def _weight_drop(module, weights_names_ls, dropout_p):
+    for name_w in weights:
+        w = getattr(module, name_w)
+        del module._parameters[name_w]
+        module.register_parameter(name_w + '_raw', nn.Parameter(w))
 
     original_module_forward = module.forward
-    forward_with_drop = ForwardWithDrop(
-        weights_names_ls, module, dropout_p, original_module_forward)
-    setattr(module, 'forward', forward_with_drop)
-    return module
+
+    def forward(*args, **kwargs):
+        for name_w in weights:
+            raw_w = getattr(module, name_w + '_raw')
+            w = nn.Parameter(torch.nn.functional.dropout(
+                raw_w, p=dropout, training=module.training))
+            setattr(module, name_w, w)
+
+        return original_module_forward(*args, **kwargs)
+
+    setattr(module, 'forward', forward)
 
 
 class WeightDropLSTM(torch.nn.LSTM):
     """
-    Wrapper around :class:`torch.nn.LSTM` that adds ``weight_dropout`` named argument.
+    Wrapper around :class:`torch.nn.LSTM` that adds ``weight_dropout`` named 
+    argument.
 
     Args:
         weight_dropout (float): The probability a weight will be dropped.
@@ -45,14 +39,17 @@ class WeightDropLSTM(torch.nn.LSTM):
 
     def __init__(self, *args, weight_dropout=0.0, **kwargs):
         super().__init__(*args, **kwargs)
-        weights = ['weight_hh_l' + str(i) for i in range(self.num_layers)]
-        _weight_drop(self, weights, weight_dropout)
+        if weight_dropout > 0:
+            weights = ['weight_hh_l' + str(i) for i in range(self.num_layers)]
+            _weight_drop(self, weights, weight_dropout)
 
 
 class LockedDropout(nn.Module):
     """ Variational Dropout (Gal & Ghahramani, 2016)
 
-    Samples a binary dropout mask only once upon the first call and then to repeatedly use that locked dropout mask for all repeated connections within the forward and backward pass.
+    Samples a binary dropout mask only once upon the first call and then to
+    repeatedly use that locked dropout mask for all repeated connections within
+    the forward and backward pass.
 
     Args:
         p (float): Probability of an element in the dropout mask to be zeroed.
@@ -203,7 +200,7 @@ class WDLSTM(nn.Module):
             [1] - Merity, Stephen, Nitish Shirish Keskar, and Richard Socher. "Regularizing and optimizing LSTM language models.", 2017.
     """
 
-    def __init__(self, num_tokens, num_layers=3, num_hidden=1150, num_embedding=400, tie_weights=True, embedding_dropout=0.1, input_dropout=0.4, hidden_dropout=0.3, output_dropout=0.4, weight_dropout=0.5, batch_first: bool = True):
+    def __init__(self, num_tokens, num_layers=3, num_hidden=1150, num_embedding=400, tie_weights=False, embedding_dropout=0.1, input_dropout=0.65, hidden_dropout=0.3, output_dropout=0.4, weight_dropout=0.5, batch_first: bool = True):
         super().__init__()
 
         self.num_layers = num_layers
@@ -288,7 +285,7 @@ class WDLSTM(nn.Module):
         out = self.decoder(out)
         out = out.view(-1, self.num_tokens)
 
-        return F.log_softmax(out, dim=1), h, (hs, m_hs)
+        return out, h, (hs, m_hs)
 
     def init_hidden(self, batch_size: int):
         weight = next(self.parameters())
