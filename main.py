@@ -1,33 +1,23 @@
 """
 Example template for defining a system.
 """
-import os
 from argparse import ArgumentParser
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.transforms as transforms
-from torch import optim
+
+from pytorch_lightning import LightningModule, Trainer
 from torch.utils.data import DataLoader
-from torchvision.datasets import MNIST
 
-from pytorch_lightning import _logger as log
-from pytorch_lightning import Trainer, LightningModule
-from model import WDLSTM
-import data
-import math
-
-from utils import repackage_hidden
+from datasets import BRTD
 from datasets.bptt import BPTTTensorDataset
+from model import WDLSTM
+from utils import repackage_hidden
 
-from typing import Optional, Callable, Tuple
-from torchtext.experimental.datasets import LanguageModelingDataset
+from metrics import PPL, BPC
 
 
 class AWDLSTM(LightningModule):
     def __init__(self,
-                 datasets: Tuple[LanguageModelingDataset],
                  hparams: dict(),
                  **kwargs) -> 'LightningTemplateModel':
         # init superclass
@@ -44,16 +34,25 @@ class AWDLSTM(LightningModule):
                             hidden_dropout=self.hparams.hidden_dropout,
                             output_dropout=self.hparams.output_dropout,
                             weight_dropout=self.hparams.weight_dropout)
-        self.criterion = torch.nn.NLLLoss()
-        self.datasets = datasets
+        print(self.model)
+        self.criterion = torch.nn.CrossEntropyLoss()
         self.hiddens = None
+        self.ppl = PPL()
+        self.bpc = BPC()
 
     def forward(self, x, hiddens=None):
         self.seq_len = x.shape[1]
         return self.model(x, hiddens)
 
     def backward(self, trainer, loss, optimizer, optimizer_idx):
-        """ During training, we rescale the learning rate depending on the length of the resulting sequence compared to the original specified sequence length. The rescaling step is necessary as sampling arbitrary sequence lengths with a fixed learning rate favors short sequences over longer ones. This linear scaling rule has been noted as important for training large scale minibatch SGD without loss of accu- racy (Goyal et al., 2017) and is a component of unbiased truncated backpropagation through time (Tallec & Ollivier, 2017).
+        """ During training, we rescale the learning rate depending on the 
+        length of the resulting sequence compared to the original specified 
+        sequence length. The rescaling step is necessary as sampling arbitrary 
+        sequence lengths with a fixed learning rate favors short sequences over 
+        longer ones. This linear scaling rule has been noted as important for 
+        training large scale minibatch SGD without loss of accu- racy (Goyal et 
+        al., 2017) and is a component of unbiased truncated backpropagation 
+        through time (Tallec & Ollivier, 2017).
         """
         temp_lr = optimizer.param_groups[0]['lr']
         optimizer.param_groups[0]['lr'] = temp_lr * \
@@ -79,13 +78,14 @@ class AWDLSTM(LightningModule):
         # Activation Regularization
         if self.hparams.alpha:
             loss += self.hparams.alpha * dropped_hs[-1].pow(2).mean()
+
         # Temporal Activation Regularization (slowness)
         if self.hparams.beta:
             loss += self.hparams.beta * \
                 (hs[-1][1:] - hs[-1][:-1]).pow(2).mean()
 
-        logs = {'train_loss': loss, 'train_raw_loss': raw_loss,
-                'train_ppl': loss.exp(), 'train_bpc': loss / math.log(2)}
+        logs = {'train_ppl': self.ppl(raw_loss), 'train_bpc': self.bpc(
+            raw_loss), 'train_loss': loss}
         return {'loss': loss, 'log': logs, 'progress_bar': logs}
 
     def on_batch_end(self):
@@ -111,12 +111,12 @@ class AWDLSTM(LightningModule):
 
         logs = {
             'val_loss': loss,
-            'val_ppl': loss.exp(),
-            'val_bpc': loss / math.log(2)
+            'val_ppl': self.ppl(loss),
+            'val_bpc': self.bpc(loss)
         }
 
         self.hiddens = None
-        return {'val_loss': loss, 'log': logs, 'progress_bar': logs}
+        return {'log': logs, 'progress_bar': logs}
 
     def configure_optimizers(self):
         """
@@ -124,10 +124,10 @@ class AWDLSTM(LightningModule):
         At least one optimizer is required.
 
 
-        WARNING: The paper use a variation of ASGD, called non-monotonically 
-        triggered ASGD (Algorithm 1), which is not implemented yet, They used L 
-        to be the number of iterations in an epoch (i.e., after training epoch ends) 
-        and n=5.
+        WARNING: The paper use a variation of ASGD, called non-monotonically
+        triggered ASGD (Algorithm 1), which is not implemented yet, They used L
+        to be the number of iterations in an epoch (i.e., after training epoch
+        ends) and n=5.
         """
         if self.hparams.optimizer == 'sgd':
             optimizer = torch.optim.SGD(self.parameters(),
@@ -143,18 +143,6 @@ class AWDLSTM(LightningModule):
                                                          gamma=0.1)
         return [optimizer], [scheduler]
 
-    def prepare_data(self):
-        pass
-
-    def train_dataloader(self):
-
-        return DataLoader(
-            BPTTTensorDataset(self.datasets['train'], self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
-
-    def val_dataloader(self):
-        return DataLoader(
-            BPTTTensorDataset(self.datasets['valid'], self.hparams.batch_size, self.hparams.bptt), batch_size=None, num_workers=1)
-
 
 if __name__ == "__main__":
 
@@ -169,7 +157,7 @@ if __name__ == "__main__":
                         help='number of layers')
     parser.add_argument('--learning-rate', type=float, default=30,
                         help='initial learning rate')
-    parser.add_argument('--gradient-clip', type=float, default=0.25,
+    parser.add_argument('--gradient-clip-val', type=float, default=0.25,
                         help='gradient clipping')
     parser.add_argument('--epochs', type=int, default=8000,
                         help='upper epoch limit')
@@ -202,17 +190,22 @@ if __name__ == "__main__":
     parser.add_argument('--multi-step-lr-milestones', nargs="+", type=int, default=[1e10],
                         help='When (which epochs) to divide the learning rate by 10')
 
+    # add args from trainer
+    parser = Trainer.add_argparse_args(parser)
+
     hparams = parser.parse_args()
 
-    import os
-    from datasets import BRTD
-
-    datasets, vocab = BRTD.create('data/brtd-short')
-
-    eval_batch_size = 10
-    test_batch_size = 1
+    datasets, vocab = BRTD.create(hparams.data)
     hparams.num_tokens = len(vocab)
-    model = AWDLSTM(datasets, hparams)
 
-    trainer = Trainer(gradient_clip_val=hparams.gradient_clip)
-    trainer.fit(model)
+    train_data = DataLoader(
+        BPTTTensorDataset(datasets['train'], hparams.batch_size, hparams.bptt), batch_size=None, num_workers=1)
+
+    val_data = DataLoader(
+        BPTTTensorDataset(datasets['valid'], hparams.batch_size, hparams.bptt), batch_size=None, num_workers=1)
+
+    model = AWDLSTM(hparams)
+
+    # most basic trainer, uses good defaults
+    trainer = Trainer.from_argparse_args(hparams)
+    trainer.fit(model, train_dataloader=train_data, val_dataloaders=val_data)
