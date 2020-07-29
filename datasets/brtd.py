@@ -11,7 +11,7 @@ from torchtext.vocab import Vocab
 from torchtext.data.utils import get_tokenizer
 
 from .bptt import BPTTTensorDataset
-
+import hashlib
 
 from .functional import ToNumber, ToTensor, Sequential
 
@@ -54,7 +54,7 @@ def _build_vocab(data, transforms, min_freq=1, max_size=None):
         for tokens in tok_list:
             counter.update(tokens)
             t.update(1)
-    vocab = Vocab(counter, min_freq=3)
+    vocab = Vocab(counter, min_freq=3, specials=('<unk>', '<eos>', '<pad>'))
     return vocab
 
 
@@ -63,7 +63,8 @@ def _basic_pt_word_normalize(line):
     Basic normalization for a line of text.
     Normalization includes
     - lowercasing
-    - complete some basic text normalization for Brazilian Portuguese words as follows:
+    - complete some basic text normalization for Brazilian Portuguese words as 
+    follows:
         add spaces before and after '\''
         remove '\"',
         add spaces before and after '.'
@@ -81,7 +82,7 @@ def _basic_pt_word_normalize(line):
     line = line.lower()
     for pattern_re, replaced_str in _patterns_dict:
         line = pattern_re.sub(replaced_str, line)
-    return line.split()
+    return line.split() + ['<eos>']
 
 
 def _basic_pt_char_normalize(line):
@@ -89,6 +90,7 @@ def _basic_pt_char_normalize(line):
     for pattern_re, replaced_str in _patterns_dict:
         line = pattern_re.sub(replaced_str, line)
     return list(line)
+
 
 class BRTD:
 
@@ -102,13 +104,25 @@ class BRTD:
             with open(os.path.join(root, f"{subset}.txt")) as f:
                 data = [l.strip() for l in f.readlines()]
 
+            sha256 = hashlib.sha256(''.join(data).encode()).hexdigest()
+
             if vocab is None and subset == 'train':
-                vocab = _build_vocab(data, tokenizer)
+                vocab_file = os.path.join(root, f'{sha256}-{tokenizer.__name__}.vocab')
+                if os.path.exists(vocab_file):
+                    vocab = torch.load(vocab_file)
+                else:
+                    print('Building the vocabulary...')
+                    vocab = _build_vocab(data, tokenizer)
+                    torch.save(vocab, vocab_file)
                 transforms = Sequential(ToNumber(vocab), ToTensor(torch.long))
 
-            data = ' '.join(data)
-            data = tokenizer(data)
-
-            datasets[subset] = transforms(data)
+            tokens_file = os.path.join(root, f'{sha256}.{subset}.tokens')
+            if os.path.exists(tokens_file):
+                datasets[subset] = torch.load(tokens_file)
+            else:
+                print(f'Tokenizing {subset} data')
+                data = [t for line in map(lambda line: tokenizer(line), data) for t in line]
+                datasets[subset] = transforms(data)
+                torch.save(datasets[subset], tokens_file)
 
         return datasets, vocab

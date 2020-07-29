@@ -15,14 +15,15 @@ class BPTTTensorDataset(torch.utils.data.IterableDataset):
     Returns:
         tuple (torch.Tensor, torch.Tensor) containing the source and target (which is the source shifted by 1) to use in language modelling
     """
+
     def __init__(self, data: torch.tensor, batch_size: int, bptt: int = 70, random_bptt: bool = True):
         super().__init__()
-        
+
         self.bptt = bptt
 
         num_batch = len(data) // batch_size
         self.data = data.narrow(0, 0, num_batch * batch_size)
-        self.data = self.data.view(batch_size, -1)
+        self.data = self.data.view(batch_size, -1).contiguous()
         self.random_bptt = random_bptt
 
     def __iter__(self) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -34,7 +35,8 @@ class BPTTTensorDataset(torch.utils.data.IterableDataset):
             else:
                 bptt = self.bptt if torch.rand(1) < 0.95 else self.bptt / 2.
                 # Prevent excessively small or negative sequence lengths
-                seq_len = max(5, int(torch.distributions.Normal(bptt, 5).sample()))
+                seq_len = max(
+                    5, int(torch.distributions.Normal(bptt, 5).sample()))
 
             seq_len = min(seq_len, self.data.shape[1] - 1 - i)
 
