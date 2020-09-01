@@ -13,8 +13,16 @@ from datasets.bptt import BPTTTensorDataset
 from model import WDLSTM
 from utils import repackage_hidden
 
+from pl_bolts.loggers import TrainsLogger
+
 from metrics import PPL, BPC
 
+import logging 
+
+import nni
+from nni.utils import merge_parameter
+
+logger = logging.getLogger('awd_lstm')
 
 class AWDLSTM(LightningModule):
     def __init__(self,
@@ -34,11 +42,11 @@ class AWDLSTM(LightningModule):
                             hidden_dropout=self.hparams.hidden_dropout,
                             output_dropout=self.hparams.output_dropout,
                             weight_dropout=self.hparams.weight_dropout)
-        print(self.model)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.hiddens = None
         self.ppl = PPL()
         self.bpc = BPC()
+        self.avg_loss = 0
 
     def forward(self, x, hiddens=None):
         self.seq_len = x.shape[1]
@@ -86,12 +94,20 @@ class AWDLSTM(LightningModule):
 
         logs = {'train_ppl': self.ppl(raw_loss), 'train_bpc': self.bpc(
             raw_loss), 'train_loss': loss}
+        
+        self.avg_loss += loss
         return {'loss': loss, 'log': logs, 'progress_bar': logs}
+
+    def on_train_epoch_end(self):
+        self.avg_loss = self.avg_loss / self.trainer.num_training_batches
+        if self.logger:
+            self.logger.log_metrics({'Average Loss': float('%.3f' % self.avg_loss)}, step=self.current_epoch + 1)
+        self.avg_loss = 0
 
     def on_batch_end(self):
         self.hiddens = None
 
-    def validation_step(self, batch, batch_idx):
+    def _on_step(self, batch, batch_idx):
         x, y = batch
 
         out, self.hiddens, (hs, dropped_hs) = self(x, self.hiddens)
@@ -99,8 +115,14 @@ class AWDLSTM(LightningModule):
 
         loss = x.shape[1] * self.criterion(out, y)
         return {'loss': loss, 'seq_len': x.shape[1]}
+    
+    def validation_step(self, batch, batch_idx):
+        return self._on_step(batch, batch_idx)
 
-    def validation_epoch_end(self, outputs):
+    def test_step(self, batch, batch_idx):
+        return self._on_step(batch, batch_idx)
+
+    def _on_epoch_end(self, outputs, subset='val'):
         loss = 0
         total_seq_len = 0
         for o in outputs:
@@ -108,15 +130,27 @@ class AWDLSTM(LightningModule):
             total_seq_len += o['seq_len']
 
         loss = loss / total_seq_len
-
         logs = {
-            'val_loss': loss,
-            'val_ppl': self.ppl(loss),
-            'val_bpc': self.bpc(loss)
+            f'{subset}_loss': loss,
+            f'{subset}_ppl': self.ppl(loss),
+            f'{subset}_bpc': self.bpc(loss)
         }
+
+        if self.logger:
+            self.logger.log_metrics(logs, step=self.current_epoch + 1)
 
         self.hiddens = None
         return {'log': logs, 'progress_bar': logs}
+    
+    def validation_epoch_end(self, outputs):
+        metrics = self._on_epoch_end(outputs, subset='val')
+        nni.report_intermediate_result(metrics['log']['val_ppl'].item())
+        return metrics
+
+    def test_epoch_end(self, outputs):
+        metrics = self._on_epoch_end(outputs, subset='test')
+        nni.report_final_result(metrics['log']['test_ppl'].item())
+        return metrics
 
     def configure_optimizers(self):
         """
@@ -143,69 +177,88 @@ class AWDLSTM(LightningModule):
                                                          gamma=0.1)
         return [optimizer], [scheduler]
 
-
-if __name__ == "__main__":
-
-    parser = ArgumentParser()
-    parser.add_argument('data', type=str, default='data/penn/',
-                        help='location of the data corpus')
-    parser.add_argument('--num-embedding', type=int, default=400,
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--num-embedding', type=int, default=400,
                         help='size of word embeddings')
-    parser.add_argument('--num-hidden', type=int, default=1150,
-                        help='number of hidden units per layer')
-    parser.add_argument('--num-layers', type=int, default=3,
-                        help='number of layers')
-    parser.add_argument('--learning-rate', type=float, default=30,
-                        help='initial learning rate')
-    parser.add_argument('--gradient-clip-val', type=float, default=0.25,
-                        help='gradient clipping')
-    parser.add_argument('--epochs', type=int, default=8000,
-                        help='upper epoch limit')
-    parser.add_argument('--batch-size', type=int, default=80, metavar='N',
-                        help='batch size')
-    parser.add_argument('--bptt', type=int, default=70,
-                        help='sequence length')
-    parser.add_argument('--output-dropout', type=float, default=0.4,
-                        help='dropout applied to layers (0 = no dropout)')
-    parser.add_argument('--hidden-dropout', type=float, default=0.3,
-                        help='dropout for rnn layers (0 = no dropout)')
-    parser.add_argument('--input-dropout', type=float, default=0.65,
-                        help='dropout for input embedding layers (0 = no dropout)')
-    parser.add_argument('--embedding-dropout', type=float, default=0.1,
-                        help='dropout to remove words from embedding layer (0 = no dropout)')
-    parser.add_argument('--weight-dropout', type=float, default=0.5,
-                        help='amount of weight dropout to apply to the RNN hidden to hidden matrix')
-    parser.add_argument('--alpha', type=float, default=2,
-                        help='alpha L2 regularization on RNN activation (alpha = 0 means no regularization)')
-    parser.add_argument('--beta', type=float, default=1,
-                        help='beta slowness regularization applied on RNN activiation (beta = 0 means no regularization)')
-    parser.add_argument('--weight-decay', type=float, default=1.2e-6,
-                        help='weight decay applied to all weights')
-    parser.add_argument('--resume', type=str,  default='',
-                        help='path of model to resume')
-    parser.add_argument('--optimizer', type=str,  default='sgd',
-                        help='optimizer to use (sgd, adam)')
-    parser.add_argument('--no-tie-weights', dest='tie_weights',  default=True, action='store_false',
-                        help='if set, does not tie the input/output embedding weights')
-    parser.add_argument('--multi-step-lr-milestones', nargs="+", type=int, default=[1e10],
-                        help='When (which epochs) to divide the learning rate by 10')
+        parser.add_argument('--num-hidden', type=int, default=1150,
+                            help='number of hidden units per layer')
+        parser.add_argument('--num-layers', type=int, default=3,
+                            help='number of layers')
+        parser.add_argument('--learning_rate', '--learning-rate', type=float, default=30.0,
+                            help='initial learning rate')
+        parser.add_argument('--batch-size', type=int, default=80, metavar='N',
+                            help='batch size')
+        parser.add_argument('--bptt', type=int, default=70,
+                            help='sequence length')
+        parser.add_argument('--output-dropout', type=float, default=0.4,
+                            help='dropout applied to layers (0 = no dropout)')
+        parser.add_argument('--hidden-dropout', type=float, default=0.3,
+                            help='dropout for rnn layers (0 = no dropout)')
+        parser.add_argument('--input-dropout', type=float, default=0.65,
+                            help='dropout for input embedding layers (0 = no dropout)')
+        parser.add_argument('--embedding-dropout', type=float, default=0.1,
+                            help='dropout to remove words from embedding layer (0 = no dropout)')
+        parser.add_argument('--weight-dropout', type=float, default=0.5,
+                            help='amount of weight dropout to apply to the RNN hidden to hidden matrix')
+        parser.add_argument('--alpha', type=float, default=2.0,
+                            help='alpha L2 regularization on RNN activation (alpha = 0 means no regularization)')
+        parser.add_argument('--beta', type=float, default=1.0,
+                            help='beta slowness regularization applied on RNN activiation (beta = 0 means no regularization)')
+        parser.add_argument('--weight-decay', type=float, default=1.2e-6,
+                            help='weight decay applied to all weights')
+        parser.add_argument('--optimizer', type=str,  default='sgd',
+                            help='optimizer to use (sgd, adam)')
+        parser.add_argument('--no-tie-weights', dest='tie_weights',  default=True, action='store_false',
+                            help='if set, does not tie the input/output embedding weights')
+        parser.add_argument('--multi-step-lr-milestones', nargs="+", type=int, default=[1e10],
+                            help='When (which epochs) to divide the learning rate by 10')
+        return parser
 
-    # add args from trainer
-    parser = Trainer.add_argparse_args(parser)
 
-    hparams = parser.parse_args()
+if __name__ == '__main__':
+    try:
+        parser = ArgumentParser()
+        parser.add_argument('data', type=str, default='data/brtd/',
+                            help='location of the data corpus')
+        
+        # add model specific args
+        parser = AWDLSTM.add_model_specific_args(parser)
 
-    datasets, vocab = BRTD.create(hparams.data)
-    hparams.num_tokens = len(vocab)
+        # add args from trainer
+        parser = Trainer.add_argparse_args(parser)
 
-    train_data = DataLoader(
-        BPTTTensorDataset(datasets['train'], hparams.batch_size, hparams.bptt), batch_size=None, num_workers=1)
+        hparams = parser.parse_args()
 
-    val_data = DataLoader(
-        BPTTTensorDataset(datasets['valid'], hparams.batch_size, hparams.bptt), batch_size=None, num_workers=1)
+        # get parameters form tuner
+        tuner_params = nni.get_next_parameter()
+        logger.debug(tuner_params)
 
-    model = AWDLSTM(hparams)
+        hparams = merge_parameter(hparams, tuner_params)
+        print(hparams)
 
-    # most basic trainer, uses good defaults
-    trainer = Trainer.from_argparse_args(hparams)
-    trainer.fit(model, train_dataloader=train_data, val_dataloaders=val_data)
+        datasets, vocab = BRTD.create(hparams.data)
+        hparams.num_tokens = len(vocab)
+
+        train_data = DataLoader(
+            BPTTTensorDataset(datasets['train'], hparams.batch_size, hparams.bptt), batch_size=None, num_workers=1)
+
+        val_data = DataLoader(
+            BPTTTensorDataset(datasets['valid'], hparams.batch_size, hparams.bptt, random_bptt=False), batch_size=None, num_workers=1)
+
+        test_data = DataLoader(
+            BPTTTensorDataset(datasets['test'], hparams.batch_size, hparams.bptt, random_bptt=False), batch_size=None, num_workers=1)
+
+        model = AWDLSTM(hparams)
+
+        # most basic trainer, uses good defaults
+        trains_logger = TrainsLogger(project_name='awd-lstm', task_name='Pytorch Lightning AWD LSTM')
+        hparams.logger = trains_logger
+        trainer = Trainer.from_argparse_args(hparams)
+        trainer.fit(model, train_dataloader=train_data, val_dataloaders=val_data)
+        trainer.test(model, test_dataloaders=[test_data])
+
+    except Exception as exception:
+        logger.exception(exception)
+        raise

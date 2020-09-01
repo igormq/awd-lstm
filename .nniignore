@@ -1,0 +1,5 @@
+data
+lightning_logs
+save
+corpus.*
+!data/brtd-tiny

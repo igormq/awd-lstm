@@ -25,6 +25,10 @@ class BPTTTensorDataset(torch.utils.data.IterableDataset):
         self.data = data.narrow(0, 0, num_batch * batch_size)
         self.data = self.data.view(batch_size, -1).contiguous()
         self.random_bptt = random_bptt
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return self.data.shape[1] // self.bptt
 
     def __iter__(self) -> Tuple[torch.Tensor, torch.Tensor]:
         i = 0

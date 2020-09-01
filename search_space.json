@@ -1,0 +1,17 @@
+{
+    "num_hidden":{"_type":"choice","_value":[500, 1150]},
+    "num_embedding": {"_type": "choice", "_value": [200, 400, 600]},
+    "num_layers": {"_type": "choice", "_value": [2, 3]},
+    "learning_rate":{"_type":"loguniform","_value":[1e-3, 30]},
+    "bptt": {"_type":"choice", "_value": [20, 50, 70, 100]},
+    "output_dropout": {"_type":"uniform", "_value": [0, 1]},
+    "hidden_dropout": {"_type":"uniform", "_value": [0, 1]},
+    "input_dropout": {"_type":"uniform", "_value": [0, 1]},
+    "embedding_dropout": {"_type":"uniform", "_value": [0, 1]},
+    "weight_dropout": {"_type":"uniform", "_value": [0, 1]},
+    "alpha":{"_type":"loguniform","_value":[1e-6, 3]},
+    "beta":{"_type":"loguniform","_value":[1e-6, 3]},
+    "weight_decay":{"_type":"loguniform","_value":[1e-9, 1e-3]},
+    "tie_weights":{"_type":"choice","_value": [true]},
+    "gradient_clip_val": {"_type":"choice","_value": [0, 0.25, 1.0, 10.0, 100.0]}
+}
