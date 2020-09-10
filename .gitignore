@@ -201,3 +201,6 @@ $RECYCLE.BIN/
 data
 lightning_logs
 save
+awd-lstm
+rnnlm
+transformer

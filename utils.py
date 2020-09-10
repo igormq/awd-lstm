@@ -1,9 +1,5 @@
 import torch
 
-from typing import Tuple
-
-from torchtext.experimental.datasets import LanguageModelingDataset
-
 
 def repackage_hidden(h):
     """Wraps hidden states in new Tensors,
@@ -11,4 +7,4 @@ def repackage_hidden(h):
     if isinstance(h, torch.Tensor):
         return h.detach()
     else:
-        return tuple(repackage_hidden(v) for v in h)
+        return list(repackage_hidden(v) for v in h)
