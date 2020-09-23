@@ -397,8 +397,6 @@ if __name__ == '__main__':
                                batch_sampler=test_batch_sampler,
                                collate_fn=_collate_fn)
 
-        model = AWDLSTM(hparams)
-
         task_name = hparams.task_name
         # most basic trainer, uses good defaults
 
@@ -414,6 +412,8 @@ if __name__ == '__main__':
                                              logger=trains_logger)
 
         del hparams.tpu_cores
+        model = AWDLSTM(hparams)
+
         trainer.fit(model,
                     train_dataloader=train_data,
                     val_dataloaders=valid_data)
