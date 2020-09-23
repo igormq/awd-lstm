@@ -371,7 +371,7 @@ if __name__ == '__main__':
         logger.debug(tuner_params)
 
         hparams = merge_parameter(hparams, tuner_params)
-        print(hparams)
+        logger.info(hparams)
 
         datasets, vocab = BRTD.create(hparams.data, vocab=hparams.vocab)
         hparams.num_tokens = len(vocab)
