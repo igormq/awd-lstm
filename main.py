@@ -352,7 +352,7 @@ if __name__ == '__main__':
         parser.add_argument('--project-name',
                             type=str,
                             default='language-model')
-        parser.add_argument('--task-name', type=str, required=True)
+        parser.add_argument('--task-name', default=None, type=str)
         parser.add_argument('--model',
                             type=str,
                             default='awd',
@@ -405,7 +405,7 @@ if __name__ == '__main__':
         task_name = hparams.task_name
         # most basic trainer, uses good defaults
 
-        trains_logger = TrainsLogger(project_name=args.project_name,
+        trains_logger = TrainsLogger(project_name=hparams.project_name,
                                      task_name=task_name,
                                      output_uri='./results',
                                      reuse_last_task_id=False)
