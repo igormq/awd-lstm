@@ -2,7 +2,6 @@ authorName: Igor Quintanilha
 experimentName: awd_lstm
 trialConcurrency: 2
 maxTrialNum: 1000
-nniManagerIp: enp5s0
 maxExecDuration: 7d
 trainingServicePlatform: local
 searchSpacePath: search_space.json
