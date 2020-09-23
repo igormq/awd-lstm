@@ -9,7 +9,7 @@ import nni
 import pytorch_lightning as pl
 import torch
 from nni.utils import merge_parameter
-from pl_bolts.loggers import TrainsLogger
+from pytorch_lightning.loggers import TrainsLogger
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from torch.utils.data import DataLoader

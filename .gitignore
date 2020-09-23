@@ -104,13 +104,7 @@ coverage.xml
 
 # Scrapy stuff:
 .scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
+pytorch_lightning
 # pyenv
 .python-version
 
@@ -204,3 +198,6 @@ save
 awd-lstm
 rnnlm
 transformer
+*.data
+results
+.ipynb_checkpoints
