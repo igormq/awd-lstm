@@ -9,7 +9,7 @@ import nni
 import pytorch_lightning as pl
 import torch
 from nni.utils import merge_parameter
-from pytorch_lightning.loggers import TrainsLogger
+from loggers import TrainsLogger
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from torch.utils.data import DataLoader
@@ -367,7 +367,11 @@ if __name__ == '__main__':
         # most basic trainer, uses good defaults
 
         trains_logger = TrainsLogger(project_name=hparams.project_name,
-                                     task_name=task_name)
+                                     task_name=task_name,
+                                     auto_connect_arg_parser={
+                                         'rank': False,
+                                         'tpu_cores': False
+                                     })
 
         # get parameters form tuner
         tuner_params = nni.get_next_parameter()
