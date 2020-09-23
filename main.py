@@ -1,7 +1,6 @@
 """
 Example template for defining a system.
 """
-import datetime
 import logging
 from argparse import ArgumentParser
 import math
@@ -117,7 +116,8 @@ class AWDLSTM(LightningModule):
         raw_loss = self.criterion(out, y)
         loss = raw_loss
 
-        # The AR and TAR loss are only applied to the output of the final RNN layer, not to all layers
+        # The AR and TAR loss are only applied to the output of the final
+        # RNN layer, not to all layers
 
         if self.hparams.model == 'awd':
             # WARNING: It is implementing here \ell_2^2 instead of \ell_2
@@ -135,6 +135,7 @@ class AWDLSTM(LightningModule):
         bpc = self.bpc(raw_loss)
 
         result = pl.TrainResult(minimize=loss)
+        result.log('train_loss', loss)
         result.log('train_ppl', ppl, prog_bar=True)
         result.log('train_bpc', bpc, prog_bar=True)
 
@@ -290,29 +291,26 @@ class AWDLSTM(LightningModule):
             '--embedding-dropout',
             type=float,
             default=0.1,
-            help='dropout to remove words from embedding layer (0 = no dropout)'
-        )
+            help='dropout to remove words from embedding layer '
+            '(0 = no dropout)')
         parser.add_argument(
             '--weight-dropout',
             type=float,
             default=0.5,
-            help=
-            'amount of weight dropout to apply to the RNN hidden to hidden matrix'
-        )
+            help='amount of weight dropout to apply to the RNN hidden to '
+            'hidden matrix')
         parser.add_argument(
             '--alpha',
             type=float,
             default=0,
-            help=
-            'alpha L2 regularization on RNN activation (alpha = 0 means no regularization)'
-        )
+            help='alpha L2 regularization on RNN activation (alpha = 0 means'
+            ' no regularization)')
         parser.add_argument(
             '--beta',
             type=float,
             default=0,
-            help=
-            'beta slowness regularization applied on RNN activiation (beta = 0 means no regularization)'
-        )
+            help='beta slowness regularization applied on RNN activiation '
+            '(beta = 0 means no regularization)')
         parser.add_argument('--weight-decay',
                             type=float,
                             default=1.2e-6,
@@ -335,9 +333,8 @@ class AWDLSTM(LightningModule):
             '--num-heads',
             type=int,
             default=2,
-            help=
-            'the number of heads in the encoder/decoder of the transformer model'
-        )
+            help='the number of heads in the encoder/decoder of the '
+            ' transformer model')
         return parser
 
 
