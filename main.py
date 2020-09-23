@@ -54,30 +54,33 @@ class AWDLSTM(LightningModule):
 
         self.hparams = hparams
         if self.hparams.model == 'awd':
-            self.model = WDLSTM(self.hparams.num_tokens,
-                                num_layers=self.hparams.num_layers,
-                                num_hidden=self.hparams.num_hidden,
-                                num_embedding=self.hparams.num_embedding,
-                                tie_weights=self.hparams.tie_weights,
-                                embedding_dropout=self.hparams.embedding_dropout,
-                                input_dropout=self.hparams.input_dropout,
-                                hidden_dropout=self.hparams.hidden_dropout,
-                                output_dropout=self.hparams.output_dropout,
-                                weight_dropout=self.hparams.weight_dropout)
+            self.model = WDLSTM(
+                self.hparams.num_tokens,
+                num_layers=self.hparams.num_layers,
+                num_hidden=self.hparams.num_hidden,
+                num_embedding=self.hparams.num_embedding,
+                tie_weights=self.hparams.tie_weights,
+                embedding_dropout=self.hparams.embedding_dropout,
+                input_dropout=self.hparams.input_dropout,
+                hidden_dropout=self.hparams.hidden_dropout,
+                output_dropout=self.hparams.output_dropout,
+                weight_dropout=self.hparams.weight_dropout)
         elif self.hparams.model == 'rnn':
-            self.model = RNNModel(self.hparams.rnn_type, self.hparams.num_tokens,
-                                num_embedding=self.hparams.num_embedding,
-                                num_hidden=self.hparams.num_hidden,
-                                num_layers=self.hparams.num_layers,
-                                dropout=self.hparams.dropout,
-                                tie_weights=self.hparams.tie_weights)
+            self.model = RNNModel(self.hparams.rnn_type,
+                                  self.hparams.num_tokens,
+                                  num_embedding=self.hparams.num_embedding,
+                                  num_hidden=self.hparams.num_hidden,
+                                  num_layers=self.hparams.num_layers,
+                                  dropout=self.hparams.dropout,
+                                  tie_weights=self.hparams.tie_weights)
         elif self.hparams.model == 'transformer':
-            self.model = TransformerModel(self.hparams.num_tokens,
-                                num_embedding=self.hparams.num_embedding,
-                                num_hidden=self.hparams.num_hidden,
-                                num_layers=self.hparams.num_layers,
-                                dropout=self.hparams.dropout,
-                                num_heads=self.hparams.num_heads)
+            self.model = TransformerModel(
+                self.hparams.num_tokens,
+                num_embedding=self.hparams.num_embedding,
+                num_hidden=self.hparams.num_hidden,
+                num_layers=self.hparams.num_layers,
+                dropout=self.hparams.dropout,
+                num_heads=self.hparams.num_heads)
         else:
             raise ValueError(f'Model {self.hparams.model} not recognized.')
 
@@ -93,7 +96,8 @@ class AWDLSTM(LightningModule):
         return self.model(x)
 
     def on_train_epoch_start(self):
-        self.train_len = len(self.train_dataloader().batch_sampler) * self.hparams.bptt
+        self.train_len = len(
+            self.train_dataloader().batch_sampler) * self.hparams.bptt
         if self.hparams.model != 'transformer':
             self.hiddens = self.model.init_hidden(self.hparams.batch_size)
 
@@ -137,7 +141,8 @@ class AWDLSTM(LightningModule):
         return result
 
     def on_validation_epoch_start(self):
-        self.val_len = len(self.val_dataloader().batch_sampler) * self.hparams.bptt
+        self.val_len = len(
+            self.val_dataloader().batch_sampler) * self.hparams.bptt
         if self.hparams.model != 'transformer':
             self.hiddens = self.model.init_hidden(self.hparams.batch_size)
 
@@ -157,13 +162,24 @@ class AWDLSTM(LightningModule):
         loss = self.criterion(out, y)
 
         result = pl.EvalResult(checkpoint_on=loss)
-        result.log('val_loss', len(x) * loss, prog_bar=True, reduce_fx=lambda x: torch.sum(x) / self.val_len)
-        result.log('val_bpc', len(x) * loss, prog_bar=True, reduce_fx=lambda x: (torch.sum(x) / self.val_len) / math.log(2))
-        result.log('val_ppl', len(x) * loss, prog_bar=True, reduce_fx=lambda x: torch.exp(torch.sum(x) / self.val_len))
-        return result    
+        result.log('val_loss',
+                   len(x) * loss,
+                   prog_bar=True,
+                   reduce_fx=lambda x: torch.sum(x) / self.val_len)
+        result.log('val_bpc',
+                   len(x) * loss,
+                   prog_bar=True,
+                   reduce_fx=lambda x:
+                   (torch.sum(x) / self.val_len) / math.log(2))
+        result.log('val_ppl',
+                   len(x) * loss,
+                   prog_bar=True,
+                   reduce_fx=lambda x: torch.exp(torch.sum(x) / self.val_len))
+        return result
 
     def on_test_epoch_start(self):
-        self.test_len = len(self.test_dataloader().batch_sampler) * self.hparams.bptt
+        self.test_len = len(
+            self.test_dataloader().batch_sampler) * self.hparams.bptt
         if self.hparams.model != 'transformer':
             self.hiddens = self.model.init_hidden(self.hparams.batch_size)
 
@@ -183,9 +199,19 @@ class AWDLSTM(LightningModule):
         loss = self.criterion(out, y)
 
         result = pl.EvalResult()
-        result.log('test_loss', len(x) * loss, prog_bar=True, reduce_fx=lambda x: torch.sum(x) / self.test_len)
-        result.log('test_bpc', len(x) * loss, prog_bar=True, reduce_fx=lambda x: (torch.sum(x) / self.test_len) / math.log(2))
-        result.log('test_ppl', len(x) * loss, prog_bar=True, reduce_fx=lambda x: torch.exp(torch.sum(x) / self.test_len))
+        result.log('test_loss',
+                   len(x) * loss,
+                   prog_bar=True,
+                   reduce_fx=lambda x: torch.sum(x) / self.test_len)
+        result.log('test_bpc',
+                   len(x) * loss,
+                   prog_bar=True,
+                   reduce_fx=lambda x:
+                   (torch.sum(x) / self.test_len) / math.log(2))
+        result.log('test_ppl',
+                   len(x) * loss,
+                   prog_bar=True,
+                   reduce_fx=lambda x: torch.exp(torch.sum(x) / self.test_len))
         return result
 
     def configure_optimizers(self):
@@ -301,21 +327,16 @@ class AWDLSTM(LightningModule):
             default=True,
             action='store_false',
             help='if set, does not tie the input/output embedding weights')
-        parser.add_argument(
-            '--rnn-type',
-            choices=['LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU'],
-            default='LSTM'
-        )
-        parser.add_argument(
-            '--dropout',
-            type=float,
-            default=0.2
-        )
+        parser.add_argument('--rnn-type',
+                            choices=['LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU'],
+                            default='LSTM')
+        parser.add_argument('--dropout', type=float, default=0.2)
         parser.add_argument(
             '--num-heads',
             type=int,
             default=2,
-            help='the number of heads in the encoder/decoder of the transformer model'
+            help=
+            'the number of heads in the encoder/decoder of the transformer model'
         )
         return parser
 
@@ -328,8 +349,14 @@ if __name__ == '__main__':
                             default='data/brtd/',
                             help='location of the data corpus')
         parser.add_argument('--vocab', default=None)
-        parser.add_argument('--task-name', type=str, default='awd-lstm')
-        parser.add_argument('--model', type=str, default='awd', choices=['rnn', 'awd', 'transformer'])
+        parser.add_argument('--project-name',
+                            type=str,
+                            default='language-model')
+        parser.add_argument('--task-name', type=str, required=True)
+        parser.add_argument('--model',
+                            type=str,
+                            default='awd',
+                            choices=['rnn', 'awd', 'transformer'])
 
         # add model specific args
         parser = AWDLSTM.add_model_specific_args(parser)
@@ -376,10 +403,9 @@ if __name__ == '__main__':
         model = AWDLSTM(hparams)
 
         task_name = hparams.task_name
-        project_name = 'language-model'
         # most basic trainer, uses good defaults
 
-        trains_logger = TrainsLogger(project_name=project_name,
+        trains_logger = TrainsLogger(project_name=args.project_name,
                                      task_name=task_name,
                                      output_uri='./results',
                                      reuse_last_task_id=False)
