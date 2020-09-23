@@ -363,16 +363,6 @@ if __name__ == '__main__':
 
         hparams = parser.parse_args()
 
-        task_name = hparams.task_name
-        # most basic trainer, uses good defaults
-
-        trains_logger = TrainsLogger(project_name=hparams.project_name,
-                                     task_name=task_name,
-                                     auto_connect_arg_parser={
-                                         'rank': False,
-                                         'tpu_cores': False
-                                     })
-
         # get parameters form tuner
         tuner_params = nni.get_next_parameter()
         logger.debug(tuner_params)
@@ -409,9 +399,21 @@ if __name__ == '__main__':
 
         model = AWDLSTM(hparams)
 
-        hparams.logger = trains_logger
-        hparams.callbacks = [NNICallback()]
-        trainer = Trainer.from_argparse_args(hparams)
+        task_name = hparams.task_name
+        # most basic trainer, uses good defaults
+
+        trains_logger = TrainsLogger(project_name=hparams.project_name,
+                                     task_name=task_name,
+                                     auto_connect_arg_parser={
+                                         'rank': False,
+                                         'tpu_cores': False
+                                     })
+
+        trainer = Trainer.from_argparse_args(hparams,
+                                             callbacks=[NNICallback()],
+                                             logger=trains_logger)
+
+        del hparams.tpu_cores
         trainer.fit(model,
                     train_dataloader=train_data,
                     val_dataloaders=valid_data)
