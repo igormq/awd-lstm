@@ -363,6 +363,12 @@ if __name__ == '__main__':
 
         hparams = parser.parse_args()
 
+        task_name = hparams.task_name
+        # most basic trainer, uses good defaults
+
+        trains_logger = TrainsLogger(project_name=hparams.project_name,
+                                     task_name=task_name)
+
         # get parameters form tuner
         tuner_params = nni.get_next_parameter()
         logger.debug(tuner_params)
@@ -398,12 +404,6 @@ if __name__ == '__main__':
                                collate_fn=_collate_fn)
 
         model = AWDLSTM(hparams)
-
-        task_name = hparams.task_name
-        # most basic trainer, uses good defaults
-
-        trains_logger = TrainsLogger(project_name=hparams.project_name,
-                                     task_name=task_name)
 
         hparams.logger = trains_logger
         hparams.callbacks = [NNICallback()]
