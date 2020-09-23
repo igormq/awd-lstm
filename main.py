@@ -406,9 +406,7 @@ if __name__ == '__main__':
         # most basic trainer, uses good defaults
 
         trains_logger = TrainsLogger(project_name=hparams.project_name,
-                                     task_name=task_name,
-                                     output_uri='./results',
-                                     reuse_last_task_id=False)
+                                     task_name=task_name)
 
         hparams.logger = trains_logger
         hparams.callbacks = [NNICallback()]
