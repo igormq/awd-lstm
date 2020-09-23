@@ -87,8 +87,10 @@ class AWDLSTM(LightningModule):
         self.bpc = BPC()
         self.avg_loss = 0
 
-    def forward(self, x, hiddens):
-        return self.model(x, hiddens)
+    def forward(self, x, hiddens=None):
+        if self.hparams.model != 'transformer':
+            return self.model(x, hiddens)
+        return self.model(x)
 
     def on_train_epoch_start(self):
         self.train_len = len(self.train_dataloader().batch_sampler) * self.hparams.bptt
