@@ -17,7 +17,6 @@ from torch.utils.data import DataLoader
 from datasets import BRTD
 from datasets.bptt import (BPTTBatchSampler, LanguageModelingDataset,
                            _collate_fn)
-from metrics import BPC, PPL
 from models import WDLSTM, RNNModel, TransformerModel
 from utils import repackage_hidden
 
@@ -85,8 +84,6 @@ class AWDLSTM(LightningModule):
 
         self.hiddens = None
         self.criterion = torch.nn.NLLLoss()
-        self.ppl = PPL()
-        self.bpc = BPC()
         self.avg_loss = 0
 
     def forward(self, x, hiddens=None):
@@ -130,16 +127,14 @@ class AWDLSTM(LightningModule):
                 loss += self.hparams.beta * \
                     (hs[-1][1:] - hs[-1][:-1]).pow(2).mean()
 
-        raw_loss = raw_loss.item()
-        ppl = self.ppl(raw_loss)
-        bpc = self.bpc(raw_loss)
+        ppl = torch.exp(raw_loss)
+        bpc = raw_loss / math.log(2)
 
-        result = pl.TrainResult(minimize=loss)
-        result.log('train_loss', loss)
-        result.log('train_ppl', ppl, prog_bar=True)
-        result.log('train_bpc', bpc, prog_bar=True)
+        self.log('train_loss', loss)
+        self.log('train_ppl', ppl, prog_bar=True)
+        self.log('train_bpc', bpc, prog_bar=True)
 
-        return result
+        return loss
 
     def on_validation_epoch_start(self):
         self.val_len = len(
@@ -162,21 +157,20 @@ class AWDLSTM(LightningModule):
 
         loss = self.criterion(out, y)
 
-        result = pl.EvalResult(checkpoint_on=loss)
-        result.log('val_loss',
-                   len(x) * loss,
-                   prog_bar=True,
-                   reduce_fx=lambda x: torch.sum(x) / self.val_len)
-        result.log('val_bpc',
-                   len(x) * loss,
-                   prog_bar=True,
-                   reduce_fx=lambda x:
-                   (torch.sum(x) / self.val_len) / math.log(2))
-        result.log('val_ppl',
-                   len(x) * loss,
-                   prog_bar=True,
-                   reduce_fx=lambda x: torch.exp(torch.sum(x) / self.val_len))
-        return result
+        self.log('val_loss',
+                 len(x) * loss,
+                 prog_bar=True,
+                 reduce_fx=lambda x: torch.sum(x) / self.val_len)
+        self.log('val_bpc',
+                 len(x) * loss,
+                 prog_bar=True,
+                 reduce_fx=lambda x:
+                 (torch.sum(x) / self.val_len) / math.log(2))
+        self.log('val_ppl',
+                 len(x) * loss,
+                 prog_bar=True,
+                 reduce_fx=lambda x: torch.exp(torch.sum(x) / self.val_len))
+        return loss
 
     def on_test_epoch_start(self):
         self.test_len = len(
@@ -199,21 +193,20 @@ class AWDLSTM(LightningModule):
 
         loss = self.criterion(out, y)
 
-        result = pl.EvalResult()
-        result.log('test_loss',
-                   len(x) * loss,
-                   prog_bar=True,
-                   reduce_fx=lambda x: torch.sum(x) / self.test_len)
-        result.log('test_bpc',
-                   len(x) * loss,
-                   prog_bar=True,
-                   reduce_fx=lambda x:
-                   (torch.sum(x) / self.test_len) / math.log(2))
-        result.log('test_ppl',
-                   len(x) * loss,
-                   prog_bar=True,
-                   reduce_fx=lambda x: torch.exp(torch.sum(x) / self.test_len))
-        return result
+        self.log('test_loss',
+                 len(x) * loss,
+                 prog_bar=True,
+                 reduce_fx=lambda x: torch.sum(x) / self.test_len)
+        self.log('test_bpc',
+                 len(x) * loss,
+                 prog_bar=True,
+                 reduce_fx=lambda x:
+                 (torch.sum(x) / self.test_len) / math.log(2))
+        self.log('test_ppl',
+                 len(x) * loss,
+                 prog_bar=True,
+                 reduce_fx=lambda x: torch.exp(torch.sum(x) / self.test_len))
+        return loss
 
     def configure_optimizers(self):
         """
@@ -401,11 +394,7 @@ if __name__ == '__main__':
         # most basic trainer, uses good defaults
 
         trains_logger = TrainsLogger(project_name=hparams.project_name,
-                                     task_name=task_name,
-                                     auto_connect_arg_parser={
-                                         'rank': False,
-                                         'tpu_cores': False
-                                     })
+                                     task_name=task_name)
 
         trainer = Trainer.from_argparse_args(hparams,
                                              callbacks=[NNICallback()],
