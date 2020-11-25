@@ -2,7 +2,7 @@ authorName: Igor Quintanilha
 experimentName: awd_lstm
 trialConcurrency: 2
 maxTrialNum: 1000
-maxExecDuration: 7d
+maxExecDuration: 60d
 trainingServicePlatform: local
 searchSpacePath: search_space.json
 useAnnotation: false
@@ -17,6 +17,6 @@ tuner:
         #choice: maximize, minimize
         optimize_mode: minimize
 trial:
-  command: NPY_MKL_FORCE_INTEL=1 python main.py --gpus 1 data/brtd-tiny --vocab data/brtd/b3922f0904f4f1b7b258a9488132f2e6480cf936493be53f74fd7aaa07e14781.8f9337.vocab --precision 16 --batch-size 128 --max_epochs 10 --terminate_on_nan
+  command: NPY_MKL_FORCE_INTEL=1 python main.py --gpus 1 data/brtd --vocab data/brtd/b3922f0904f4f1b7b258a9488132f2e6480cf936493be53f74fd7aaa07e14781.8f9337.vocab --batch-size 64 --max_epochs 10 --terminate_on_nan
   codeDir: .
   gpuNum: 1
