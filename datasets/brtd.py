@@ -35,7 +35,7 @@ def _build_vocab(data, transforms, min_freq=3, max_size=200000):
     vocab = Vocab(counter,
                   max_size=max_size,
                   min_freq=min_freq,
-                  specials=('<unk>', '<eos>', '<eos>', '<pad>'))
+                  specials=('<unk>', '<sos>', '<eos>', '<pad>'))
     return vocab
 
 
