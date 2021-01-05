@@ -43,7 +43,7 @@ if __name__ == '__main__':
         base_task_id=args.
         task_id,  # This is the experiment we want to optimize
         # here we define the hyper-parameters to optimize
-        hyper_parameters=[hyper_parameters[args.model]],
+        hyper_parameters=hyper_parameters[args.model],
         # setting the objective metric we want to maximize/minimize
         objective_metric_title='val_ppl',
         objective_metric_series='val_ppl',
