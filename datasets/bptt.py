@@ -4,8 +4,6 @@ import math
 
 from torch.utils.data.sampler import Sampler
 
-from typing import Tuple
-
 
 class LanguageModelingDataset(torch.utils.data.Dataset):
     """ WARNING: it should be used with no automatic batching data loader, because the batching is already done here
@@ -19,7 +17,6 @@ class LanguageModelingDataset(torch.utils.data.Dataset):
     Returns:
         tuple (torch.Tensor, torch.Tensor) containing the source and target (which is the source shifted by 1) to use in language modelling
     """
-
     def __init__(self, data: torch.tensor):
         super().__init__()
         self.data = data
@@ -54,7 +51,6 @@ class BPTTBatchSampler(Sampler):
         >>> list(sampler)[0] # First Batch
         [slice(0, 2, None), slice(34, 36, None), slice(67, 69, None)]
     """
-
     def __init__(self, data, bptt_length, batch_size, drop_last=True):
         self.data = data
         self.batch_size = batch_size
@@ -72,8 +68,10 @@ class BPTTBatchSampler(Sampler):
                 chunk_sizes[i] += 1
 
         self.samplers = [{
-            'offset': sum(chunk_sizes[:i]),
-            'sampler': BPTTSampler(range(chunk_sizes[i]), bptt_length)
+            'offset':
+            sum(chunk_sizes[:i]),
+            'sampler':
+            BPTTSampler(range(chunk_sizes[i]), bptt_length)
         } for i in range(batch_size)]
 
     def __iter__(self):
@@ -87,7 +85,8 @@ class BPTTBatchSampler(Sampler):
                     # Adjust the sampler indices to the offset
                     offset = self.samplers[i]['offset']
                     slice_ = next(iterator)
-                    batch.append(slice(slice_.start + offset, slice_.stop + offset))
+                    batch.append(
+                        slice(slice_.start + offset, slice_.stop + offset))
                 except StopIteration:
                     pass
 
@@ -121,7 +120,6 @@ class BPTTSampler(Sampler):
         >>> list(BPTTSampler(range(5), 2))
         [slice(0, 2, None), slice(2, 4, None)]
     """
-
     def __init__(self, data, bptt_length):
         self.data = data
         self.bptt_length = bptt_length
