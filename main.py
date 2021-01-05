@@ -2,14 +2,12 @@
 Example template for defining a system.
 """
 import logging
-from argparse import ArgumentParser
 import math
+import os
+from argparse import ArgumentParser
 
-import nni
-import pytorch_lightning as pl
 import torch
-from nni.utils import merge_parameter
-from loggers import TrainsLogger
+from clearml import Task
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from torch.utils.data import DataLoader
@@ -23,32 +21,12 @@ from utils import repackage_hidden
 logger = logging.getLogger('lm')
 
 
-class NNICallback(Callback):
-    def on_train_epoch_start(self, trainer: Trainer, pl_module):
-        if trainer.global_rank != 0:
-            return
-
-        if trainer.running_sanity_check:
-            return
-
-        if trainer.logged_metrics and 'val_loss' in trainer.logged_metrics:
-            nni.report_intermediate_result(trainer.logged_metrics['val_loss'])
-
-    def on_train_end(self, trainer, pl_module):
-        if trainer.global_rank != 0:
-            return
-
-        if trainer.running_sanity_check:
-            return
-
-        if trainer.logged_metrics and 'val_loss' in trainer.logged_metrics:
-            nni.report_final_result(trainer.logged_metrics['val_loss'])
-
-
 class AWDLSTM(LightningModule):
     def __init__(self, hparams: dict(), **kwargs) -> 'LightningTemplateModel':
         # init superclass
         super().__init__(**kwargs)
+
+        self.save_hyperparameters()
 
         self.hparams = hparams
         if self.hparams.model == 'awd':
@@ -336,7 +314,7 @@ if __name__ == '__main__':
         parser = ArgumentParser()
         parser.add_argument('data',
                             type=str,
-                            default='data/brtd/',
+                            default=os.path.abspath('./data/brtd/'),
                             help='location of the data corpus')
         parser.add_argument('--vocab', default=None)
         parser.add_argument('--project-name',
@@ -356,12 +334,8 @@ if __name__ == '__main__':
 
         hparams = parser.parse_args()
 
-        # get parameters form tuner
-        tuner_params = nni.get_next_parameter()
-        logger.debug(tuner_params)
-
-        hparams = merge_parameter(hparams, tuner_params)
-        logger.info(hparams)
+        task = Task.init(project_name="language-model",
+                         task_name=hparams.model)
 
         datasets, vocab = BRTD.create(hparams.data, vocab=hparams.vocab)
         hparams.num_tokens = len(vocab)
@@ -390,15 +364,7 @@ if __name__ == '__main__':
                                batch_sampler=test_batch_sampler,
                                collate_fn=_collate_fn)
 
-        task_name = hparams.task_name
-        # most basic trainer, uses good defaults
-
-        trains_logger = TrainsLogger(project_name=hparams.project_name,
-                                     task_name=task_name)
-
-        trainer = Trainer.from_argparse_args(hparams,
-                                             callbacks=[NNICallback()],
-                                             logger=trains_logger)
+        trainer = Trainer.from_argparse_args(hparams)
 
         del hparams.tpu_cores
         model = AWDLSTM(hparams)
