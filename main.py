@@ -8,8 +8,7 @@ from argparse import ArgumentParser
 
 import torch
 from clearml import Task
-from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.callbacks import Callback
+from pytorch_lightning import LightningModule, Trainer, callbacks
 from torch.utils.data import DataLoader
 
 from datasets import BRTD
@@ -317,10 +316,6 @@ if __name__ == '__main__':
                             default=os.path.abspath('./data/brtd/'),
                             help='location of the data corpus')
         parser.add_argument('--vocab', default=None)
-        parser.add_argument('--project-name',
-                            type=str,
-                            default='language-model')
-        parser.add_argument('--task-name', default=None, type=str)
         parser.add_argument('--model',
                             type=str,
                             default='awd',
@@ -345,6 +340,7 @@ if __name__ == '__main__':
                                                hparams.batch_size)
         train_data = DataLoader(train_dataset,
                                 num_workers=8,
+                                pin_memory=True,
                                 batch_sampler=train_batch_sampler,
                                 collate_fn=_collate_fn)
 
@@ -353,6 +349,7 @@ if __name__ == '__main__':
                                                hparams.batch_size)
         valid_data = DataLoader(valid_dataset,
                                 num_workers=8,
+                                pin_memory=True,
                                 batch_sampler=valid_batch_sampler,
                                 collate_fn=_collate_fn)
 
@@ -361,10 +358,22 @@ if __name__ == '__main__':
                                               hparams.batch_size)
         test_data = DataLoader(test_dataset,
                                num_workers=8,
+                               pin_memory=True,
                                batch_sampler=test_batch_sampler,
                                collate_fn=_collate_fn)
 
-        trainer = Trainer.from_argparse_args(hparams)
+        early_stop_callback = callbacks.EarlyStopping(monitor='val_ppl',
+                                                      mode='min')
+        model_checkpoint_callback = callbacks.ModelCheckpoint(
+            monitor='val_ppl',
+            save_last=True,
+            save_top_k=5,
+            save_weights_only=False,
+            mode='min')
+
+        trainer = Trainer.from_argparse_args(
+            hparams,
+            callbacks=[early_stop_callback, model_checkpoint_callback])
 
         del hparams.tpu_cores
         model = AWDLSTM(hparams)
