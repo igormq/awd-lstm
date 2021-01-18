@@ -296,7 +296,10 @@ class WDLSTM(nn.Module):
         torch.nn.init.zeros_(self.decoder.bias)
         torch.nn.init.uniform_(self.decoder.weight, -0.1, 0.1)
 
-    def forward(self, x, h):
+    def forward(self, x, h=None):
+        if h is None:
+            h = self.init_hidden(x.shape[0])
+
         embedding = self.encoder(x)
         embedding = self.input_locked_dropout(embedding)
 
