@@ -6,9 +6,12 @@ import math
 import os
 from argparse import ArgumentParser
 
+import nni
 import torch
 from clearml import Task
+from nni.utils import merge_parameter
 from pytorch_lightning import LightningModule, Trainer, callbacks
+from pytorch_lightning.callbacks import Callback
 from torch.utils.data import DataLoader
 
 from datasets import BRTD
@@ -20,7 +23,29 @@ from utils import repackage_hidden
 logger = logging.getLogger('lm')
 
 
-class AWDLSTM(LightningModule):
+class NNICallback(Callback):
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module):
+        if trainer.global_rank != 0:
+            return
+
+        if trainer.running_sanity_check:
+            return
+
+        if trainer.logged_metrics and 'val_ppl' in trainer.logged_metrics:
+            nni.report_intermediate_result(trainer.logged_metrics['val_ppl'])
+
+    def on_train_end(self, trainer, pl_module):
+        if trainer.global_rank != 0:
+            return
+
+        if trainer.running_sanity_check:
+            return
+
+        if trainer.logged_metrics and 'val_ppl' in trainer.logged_metrics:
+            nni.report_final_result(trainer.logged_metrics['val_ppl'])
+
+
+class LanguageModel(LightningModule):
     def __init__(self, hparams: dict(), **kwargs) -> 'LightningTemplateModel':
         # init superclass
         super().__init__(**kwargs)
@@ -40,6 +65,10 @@ class AWDLSTM(LightningModule):
                 hidden_dropout=self.hparams.hidden_dropout,
                 output_dropout=self.hparams.output_dropout,
                 weight_dropout=self.hparams.weight_dropout)
+
+            self.model(
+                torch.zeros(self.hparams.bptt, self.hparams.batch_size).long(),
+                self.model.init_hidden(self.hparams.batch_size))
         elif self.hparams.model == 'rnn':
             self.model = RNNModel(self.hparams.rnn_type,
                                   self.hparams.num_tokens,
@@ -322,15 +351,29 @@ if __name__ == '__main__':
                             choices=['rnn', 'awd', 'transformer'])
 
         # add model specific args
-        parser = AWDLSTM.add_model_specific_args(parser)
+        parser = LanguageModel.add_model_specific_args(parser)
 
         # add args from trainer
         parser = Trainer.add_argparse_args(parser)
 
         hparams = parser.parse_args()
 
-        task = Task.init(project_name="language-model",
-                         task_name=hparams.model)
+        tuner_params = nni.get_next_parameter()
+
+        logger.debug(tuner_params)
+
+        hparams = merge_parameter(hparams, tuner_params)
+
+        logger.info(hparams)
+
+        if tuner_params is None:
+            task = Task.init(project_name="language-model",
+                             task_name=hparams.model)
+        else:
+            task = Task.init(project_name="language-model-hp",
+                             task_name=hparams.model,
+                             continue_last_task=False)
+            task.add_tags(['hp', hparams.model])
 
         datasets, vocab = BRTD.create(hparams.data, vocab=hparams.vocab)
         hparams.num_tokens = len(vocab)
@@ -373,10 +416,15 @@ if __name__ == '__main__':
 
         trainer = Trainer.from_argparse_args(
             hparams,
-            callbacks=[early_stop_callback, model_checkpoint_callback])
+            default_root_dir=os.path.abspath(
+                os.path.expanduser("~/data/awd-lstm")),
+            callbacks=[
+                early_stop_callback, model_checkpoint_callback,
+                NNICallback()
+            ])
 
         del hparams.tpu_cores
-        model = AWDLSTM(hparams)
+        model = LanguageModel(hparams)
 
         trainer.fit(model,
                     train_dataloader=train_data,
