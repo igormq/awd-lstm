@@ -1,38 +1,8 @@
 {
-    "model": {
-        "_type": "choice",
-        "_value": [
-            "awd"
-        ]
-    },
-    "num_hidden": {
-        "_type": "choice",
-        "_value": [
-            1150
-        ]
-    },
-    "num_embedding": {
-        "_type": "choice",
-        "_value": [
-            400
-        ]
-    },
-    "num_layers": {
-        "_type": "choice",
-        "_value": [
-            3
-        ]
-    },
     "learning_rate": {
         "_type": "loguniform",
         "_value": [
             1e-2,
-            20
-        ]
-    },
-    "bptt": {
-        "_type": "choice",
-        "_value": [
             20
         ]
     },
@@ -74,13 +44,15 @@
     "alpha": {
         "_type": "choice",
         "_value": [
-            0
+            0,
+            2
         ]
     },
     "beta": {
         "_type": "choice",
         "_value": [
-            0
+            0,
+            1
         ]
     },
     "weight_decay": {
@@ -90,19 +62,11 @@
             1
         ]
     },
-    "tie_weights": {
-        "_type": "choice",
-        "_value": [
-            true
-        ]
-    },
     "gradient_clip_val": {
         "_type": "choice",
         "_value": [
             0,
-            0.25,
-            1.0,
-            400.0
+            0.25
         ]
     }
 }

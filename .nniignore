@@ -3,3 +3,8 @@ lightning_logs
 save
 corpus.*
 !data/brtd-tiny
+awd-lstm
+results
+main
+.ipynb*
+.vscode

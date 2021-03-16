@@ -1,14 +1,19 @@
 authorName: Igor Quintanilha
 experimentName: awd_lstm
 trialConcurrency: 2
-maxTrialNum: 1000
+maxTrialNum: 100
+# nniManagerIp: 10.221.90.21
 maxExecDuration: 60d
+# trainingServicePlatform: remote
 trainingServicePlatform: local
 searchSpacePath: search_space.json
 useAnnotation: false
-localConfig:
-    useActiveGpu: true
-    maxTrialNumPerGpu: 1
+# tuner:
+#     builtinAdvisorName: Hyperband
+#     classArgs:
+#         optimize_mode: minimize
+#         R: 150000
+#         eta: 3  
 tuner:
     #choice: TPE, Random, Anneal, Evolution, BatchTuner, MetisTuner, GPTuner
     #SMAC (SMAC should be installed through nnictl)
@@ -17,6 +22,44 @@ tuner:
         #choice: maximize, minimize
         optimize_mode: minimize
 trial:
-  command: NPY_MKL_FORCE_INTEL=1 python main.py --gpus 1 data/brtd --vocab data/brtd/b3922f0904f4f1b7b258a9488132f2e6480cf936493be53f74fd7aaa07e14781.8f9337.vocab --batch-size 64 --max_epochs 10 --terminate_on_nan
+  command: export HOSTNAME=$(hostname -s) && source /home/igor.quintanilha/miniconda3/bin/activate dsc && NPY_MKL_FORCE_INTEL=1 python main.py --gpus 1 data/brtd --vocab data/brtd/b3922f0904f4f1b7b258a9488132f2e6480cf936493be53f74fd7aaa07e14781.8f9337.vocab --batch-size 64 --max_epochs 10 --terminate_on_nan --num-embedding 400 --num-layers 3 --num-hidden 1150 --model awd --bptt 20 --max_steps 150000 --val_check_interval .25
   codeDir: .
   gpuNum: 1
+localConfig:
+    useActiveGpu: true
+    maxTrialNumPerGpu: 1
+    gpuIndices: 1,2
+# remoteConfig:
+#   reuse: true
+# machineList:
+#   - ip: 10.221.70.3 # leiria
+#     username: igor.quintanilha
+#     sshKeyPath: /home/igor.quintanilha/.ssh/id_rsa
+#     preCommand: source /home/igor.quintanilha/miniconda3/bin/activate dsc
+#     useActiveGpu: true
+#     maxTrialNumPerGpu: 1
+#   - ip: 10.221.70.15 # helsinque
+#     username: igor.quintanilha
+#     sshKeyPath: /home/igor.quintanilha/.ssh/id_rsa
+#     preCommand: source /home/igor.quintanilha/miniconda3/bin/activate dsc
+#     useActiveGpu: true
+#     maxTrialNumPerGpu: 1
+#   - ip: 10.221.90.20 # head-04-01
+#     username: igor.quintanilha
+#     sshKeyPath: /home/igor.quintanilha/.ssh/id_rsa
+#     preCommand: source /home/igor.quintanilha/miniconda3/bin/activate dsc
+#     useActiveGpu: true
+#     maxTrialNumPerGpu: 1
+  # - ip: 10.221.90.21 # node-04-01
+  #   username: igor.quintanilha
+  #   sshKeyPath: /home/igor.quintanilha/.ssh/id_rsa
+  #   preCommand: source /home/igor.quintanilha/miniconda3/bin/activate dsc
+  #   useActiveGpu: true
+  #   maxTrialNumPerGpu: 1
+#   - ip: 10.221.70.81 # teresopolis
+#     username: igor.quintanilha
+#     sshKeyPath: /home/igor.quintanilha/.ssh/id_rsa
+#     preCommand: source /home/igor.quintanilha/miniconda3/bin/activate dsc
+#     useActiveGpu: true
+#     gpuIndices: 1,2
+#     maxTrialNumPerGpu: 1
